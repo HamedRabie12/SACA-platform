@@ -1,0 +1,23 @@
+"use client";
+import { useEffect, useState } from "react";
+import { Briefcase, HeartHandshake, Plane, Users, Sparkles, HandCoins, HeartPulse, BookOpen, Scale, GraduationCap, Building2, Trophy, ArrowLeft, ArrowRight, type LucideIcon } from "lucide-react";
+import { TopNav } from "@/components/layout/top-nav";
+import { Footer } from "@/components/layout/footer";
+import { AIAssistantWidget } from "@/components/community/ai-assistant-widget";
+import { PageHeader } from "@/components/layout/page-header";
+import { useLanguage } from "@/components/providers/language-provider";
+
+const ICONS: Record<string, LucideIcon> = { education: GraduationCap, jobs: Briefcase, legal: Scale, immigration: Plane, family: HeartHandshake, youth: Users, women: Sparkles, seniors: HandCoins, health: HeartPulse, training: BookOpen, business: Building2, social: HeartHandshake, sports: Trophy };
+
+type Service = { code:string; nameAr:string; nameEn:string; descriptionAr:string|null; descriptionEn:string|null; providers:number; requests:number };
+
+export default function ServicesPage() {
+  const { lang } = useLanguage();
+  const [services,setServices] = useState<Service[]>([]);
+  useEffect(()=>{ fetch('/api/community/services',{cache:'no-store'}).then(r=>r.json()).then(j=>setServices(j.services||[])).catch(()=>setServices([])); },[]);
+  const Arrow = lang === 'ar' ? ArrowLeft : ArrowRight;
+  return <main className="min-h-screen flex flex-col bg-background"><TopNav/><PageHeader title={lang==='ar'?'مركز خدمات الجالية':'Community Service Center'} subtitle={lang==='ar'?'خدمات حقيقية مرتبطة بطلبات المساعدة والإحالات والمتابعة، وليست مجرد دليل ثابت.':'Real community services backed by requests, referrals and follow-up.'} crumbs={[{label:lang==='ar'?'الخدمات':'Services'}]}/><div className="mx-auto w-full max-w-[1400px] flex-1 px-4 py-8 md:px-6">
+    <div className="mb-8 grid gap-4 md:grid-cols-4"><a href="/portal/service-requests" className="rounded-3xl bg-emerald-900 p-6 text-white shadow-lg"><div className="text-xs font-bold uppercase tracking-widest text-emerald-200">01</div><h2 className="mt-2 text-xl font-black">{lang==='ar'?'أحتاج مساعدة':'I Need Help'}</h2><p className="mt-2 text-sm text-white/75">{lang==='ar'?'أرسل طلباً حقيقياً وتابع حالته.':'Submit and track a real service request.'}</p></a><a href="/volunteer" className="rounded-3xl border bg-white p-6 shadow-sm hover:-translate-y-1"><div className="text-xs font-bold uppercase tracking-widest text-emerald-700">02</div><h2 className="mt-2 text-xl font-black">{lang==='ar'?'أريد التطوع':'Volunteer'}</h2><p className="mt-2 text-sm text-slate-600">{lang==='ar'?'أنشئ ملف تطوع واربط مهاراتك بالبرامج.':'Create a volunteer profile and apply to programs.'}</p></a><a href="/jobs" className="rounded-3xl border bg-white p-6 shadow-sm hover:-translate-y-1"><div className="text-xs font-bold uppercase tracking-widest text-emerald-700">03</div><h2 className="mt-2 text-xl font-black">{lang==='ar'?'أبحث عن وظيفة':'Find a Job'}</h2><p className="mt-2 text-sm text-slate-600">{lang==='ar'?'فرص قابلة للتصفية حسب الولاية والعمل عن بعد.':'Filter jobs by state and remote work.'}</p></a><a href="/businesses" className="rounded-3xl border bg-white p-6 shadow-sm hover:-translate-y-1"><div className="text-xs font-bold uppercase tracking-widest text-emerald-700">04</div><h2 className="mt-2 text-xl font-black">{lang==='ar'?'مشروعي':'My Business'}</h2><p className="mt-2 text-sm text-slate-600">{lang==='ar'?'أضف نشاطك التجاري واطلب التحقق.':'Claim and verify a business profile.'}</p></a></div>
+    <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{services.map(s=>{const Icon=ICONS[s.code]||HeartHandshake; return <a href={`/portal/service-requests?service=${encodeURIComponent(s.code)}`} key={s.code} className="group rounded-3xl border bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-xl"><div className="flex items-center justify-between"><div className="grid h-12 w-12 place-items-center rounded-2xl bg-emerald-50 text-emerald-800"><Icon className="h-6 w-6"/></div><Arrow className="h-4 w-4 text-slate-300 group-hover:text-emerald-700"/></div><h3 className="mt-5 text-lg font-black">{lang==='ar'?s.nameAr:s.nameEn}</h3><p className="mt-2 min-h-12 text-sm leading-6 text-slate-600">{lang==='ar'?s.descriptionAr:s.descriptionEn}</p><div className="mt-5 flex items-center justify-between border-t pt-4 text-xs"><span><strong className="text-emerald-800">{s.providers}</strong> {lang==='ar'?'مقدم موثق':'verified providers'}</span><span><strong className="text-slate-800">{s.requests}</strong> {lang==='ar'?'طلبات مفتوحة':'open requests'}</span></div></a>})}</div>
+  </div><Footer/><AIAssistantWidget/></main>;
+}

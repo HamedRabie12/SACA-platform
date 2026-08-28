@@ -1,0 +1,5 @@
+import { db } from "@/lib/db";
+import { AdminGuard } from "@/components/layout/admin-guard";
+
+export const dynamic = "force-dynamic";
+export default async function AdminSecurity(){ const [events, incidents]=await Promise.all([db.securityEvent.count(),db.securityIncident.count({where:{status:{not:'RESOLVED'}}})]); return <AdminGuard><main className="min-h-screen bg-[var(--brand-paper)] p-6"><div className="mx-auto max-w-7xl"><h1 className="text-3xl font-black">مركز الأمن</h1><div className="mt-8 grid gap-4 md:grid-cols-3"><div className="surface-elevated rounded-2xl p-6"><div className="text-xs text-slate-500">Security Events</div><div className="mt-2 text-3xl font-black">{events}</div></div><div className="surface-elevated rounded-2xl p-6"><div className="text-xs text-slate-500">Open Incidents</div><div className="mt-2 text-3xl font-black">{incidents}</div></div><div className="surface-elevated rounded-2xl p-6"><div className="text-xs text-slate-500">Admin Session</div><div className="mt-2 font-bold">Server-side</div></div></div></div></main></AdminGuard>}

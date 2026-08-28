@@ -1,0 +1,3 @@
+import { NextResponse } from 'next/server';
+import { db } from '@/lib/db';
+export async function GET(_:Request,{params}:{params:Promise<{id:string}>}){const {id}=await params;const e=await db.election.findUnique({where:{id}});if(!e)return NextResponse.json({error:'Not found'},{status:404});if(!['PUBLISHED','FINAL','ARCHIVED'].includes(e.status))return NextResponse.json({error:'Results not public yet'},{status:403});const results=await db.electionResult.findMany({where:{electionId:id,status:'CERTIFIED'},orderBy:{voteCount:'desc'}});return NextResponse.json({election:{id:e.id,name:e.name,status:e.status},results});}

@@ -1,0 +1,5 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { db } from '@/lib/db';
+import { requireAdminRequest } from '@/lib/security/admin-session';
+export async function GET(req:NextRequest){if(!await requireAdminRequest(req))return NextResponse.json({error:'Unauthorized'},{status:401});const items=await db.privacyRequest.findMany({orderBy:{requestedAt:'desc'},take:100});return NextResponse.json({requests:items});}
+export async function PATCH(req:NextRequest){if(!await requireAdminRequest(req))return NextResponse.json({error:'Unauthorized'},{status:401});const b=await req.json();const id=String(b?.id||'');const status=String(b?.status||'');if(!id||!['SUBMITTED','IN_REVIEW','APPROVED','REJECTED','COMPLETED'].includes(status))return NextResponse.json({error:'Invalid status'},{status:400});const item=await db.privacyRequest.update({where:{id},data:{status,completedAt:status==='COMPLETED'?new Date():null,handledBy:'admin'}});await db.auditLog.create({data:{actor:'admin',action:'privacy-request-status-changed',entity:'privacy_request',entityId:id,details:JSON.stringify({status})}});return NextResponse.json({ok:true,request:item});}

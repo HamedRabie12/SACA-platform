@@ -1,0 +1,5 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { db } from '@/lib/db';
+import { requireAdminRequest } from '@/lib/security/admin-session';
+export async function GET(req:NextRequest){if(!await requireAdminRequest(req))return NextResponse.json({error:'Unauthorized'},{status:401});const items=await db.serviceRequest.findMany({orderBy:{createdAt:'desc'},take:100});return NextResponse.json({requests:items});}
+export async function PATCH(req:NextRequest){if(!await requireAdminRequest(req))return NextResponse.json({error:'Unauthorized'},{status:401});const b=await req.json();const id=String(b?.id||'');const status=String(b?.status||'');if(!id||!['SUBMITTED','TRIAGED','ASSIGNED','IN_PROGRESS','WAITING','RESOLVED','CLOSED'].includes(status))return NextResponse.json({error:'Invalid status'},{status:400});const item=await db.serviceRequest.update({where:{id},data:{status,resolvedAt:status==='RESOLVED'||status==='CLOSED'?new Date():null}});await db.auditLog.create({data:{actor:'admin',action:'service-request-status-changed',entity:'service_request',entityId:id,details:JSON.stringify({status})}});return NextResponse.json({ok:true,request:item});}

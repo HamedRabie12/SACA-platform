@@ -1,0 +1,1764 @@
+// SACA — Sudanese American Community Association
+// SACA 3.0 production schema. PostgreSQL is the single source of truth.
+// Prisma is the ORM/schema/migration layer; it is not a second database.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================================
+// Geographic Foundation
+// ============================================================
+
+model USState {
+  id        String   @id @default(cuid())
+  code      String   @unique // e.g., TX, CA, NY
+  nameEn    String   @unique
+  nameAr    String   @unique
+  fipsCode  String?
+  isActive  Boolean  @default(true)
+  sortOrder Int      @default(0)
+  cities    USCity[]
+  orgs      Organization[]
+  members   Member[]
+  events    Event[]
+  meetings  Meeting[]
+  news      News[]
+  createdAt DateTime @default(now())
+
+  @@index([isActive])
+}
+
+model USCity {
+  id        String   @id @default(cuid())
+  stateId   String
+  nameEn    String
+  nameAr    String
+  latitude  Float?
+  longitude Float?
+  isActive  Boolean  @default(true)
+  sortOrder Int      @default(0)
+  state     USState  @relation(fields: [stateId], references: [id])
+  orgs      Organization[]
+  members   Member[]
+
+  @@unique([stateId, nameEn])
+  @@index([stateId, isActive])
+}
+
+// ============================================================
+// Members & Identity
+// ============================================================
+
+model Member {
+  id              String   @id @default(cuid())
+  email           String?  @unique
+  phoneE164       String?  @unique
+  name            String
+  avatarUrl       String?
+  bio             String?
+  stateId         String?
+  cityId          String?
+  profession      String?
+  interests       String? // comma-separated list
+  membershipType  String   @default("Member") // Member, Verified, Premium
+  accountState    String   @default("Active") // PendingVerification, Verified, Active, Suspended, Locked, Deactivated, Archived
+  emailVerifiedAt DateTime?
+  phoneVerifiedAt DateTime?
+  privacyShowState   Boolean @default(true)
+  privacyShowCity     Boolean @default(false)
+  privacyShowPrecise  Boolean @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  state            USState?  @relation(fields: [stateId], references: [id])
+  city             USCity?   @relation(fields: [cityId], references: [id])
+  user             User?
+  memberships      Membership[]
+  membershipApplications MembershipApplication[]
+  memberSessions   MemberSession[]
+  eventRegistrations EventRegistration[]
+  notifications    Notification[]
+  pushSubscriptions PushSubscription[]
+  follows          Follow[]
+  volunteerProfile VolunteerProfile?
+  volunteers       Volunteer?
+  privacyRequests  PrivacyRequest[]
+  dataExports      DataExportRequest[]
+  dataCorrections  DataCorrectionRequest[]
+  accountDeletions  AccountDeletionRequest[]
+
+  @@index([stateId, cityId])
+  @@index([accountState])
+  consentRecords   ConsentRecord[]
+}
+
+model CountryCode {
+  id            String   @id @default(cuid())
+  isoAlpha2     String   @unique
+  isoAlpha3     String   @unique
+  nameAr        String
+  nameEn        String
+  dialingCode   String
+  flagIdentifier String?
+  isActive      Boolean  @default(true)
+  sortOrder     Int      @default(0)
+}
+
+// ============================================================
+// Organizations
+// ============================================================
+
+model Organization {
+  id              String   @id @default(cuid())
+  name            String
+  type            String   // community, association, center, mosque, education, professional, charity
+  description     String
+  logoUrl         String?
+  coverUrl        String?
+  stateId         String?
+  cityId          String?
+  address         String?
+  latitude        Float?
+  longitude       Float?
+  phone           String?
+  email           String?
+  website         String?
+  hoursAr         String?
+  services        String? // comma-separated list
+  verification    String   @default("Unverified") // Unverified, PendingVerification, Verified, Suspended, Archived
+  rating          Float    @default(0)
+  isDevSeed       Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  state           USState? @relation(fields: [stateId], references: [id])
+  city            USCity?  @relation(fields: [cityId], references: [id])
+
+  @@index([stateId, cityId])
+  @@index([verification])
+  @@index([type])
+}
+
+// ============================================================
+// Events
+// ============================================================
+
+model Event {
+  id           String   @id @default(cuid())
+  title        String
+  description  String
+  category     String   // social, cultural, educational, religious, professional, kids, women, families, sports, business, conference
+  imageUrl     String?
+  eventDate    DateTime
+  endDate      DateTime?
+  isOnline      Boolean @default(false)
+  location      String?
+  stateId       String?
+  cityId        String?
+  latitude      Float?
+  longitude     Float?
+  capacity      Int     @default(0)
+  registeredCount Int   @default(0)
+  organizerName String?
+  status        String   @default("Upcoming") // Upcoming, Live, Completed, Cancelled
+  isDevSeed     Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  state         USState? @relation(fields: [stateId], references: [id])
+  registrations EventRegistration[]
+
+  @@index([eventDate, status])
+  @@index([stateId, status])
+}
+
+// ============================================================
+// Meetings (Live Online Meetings)
+// ============================================================
+
+model Meeting {
+  id           String   @id @default(cuid())
+  title        String
+  description  String
+  hostName     String
+  isLive       Boolean  @default(false)
+  isPublic     Boolean   @default(true)
+  viewerCount  Int      @default(0)
+  scheduledAt  DateTime
+  endsAt       DateTime?
+  joinUrl      String?
+  stateId      String?
+  isDevSeed    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  state         USState? @relation(fields: [stateId], references: [id])
+  participants  MeetingParticipant[]
+
+  @@index([isLive, scheduledAt])
+}
+
+// ============================================================
+// News
+// ============================================================
+
+model News {
+  id           String   @id @default(cuid())
+  title        String
+  summary      String
+  content      String
+  imageUrl     String?
+  category     String   @default("Community") // Community, Announcement, Education, Culture, Business, Health, Immigration
+  authorName   String?
+  orgName      String?
+  stateId      String?
+  status       String   @default("Published") // Draft, PendingReview, Published, Archived
+  publishedAt  DateTime @default(now())
+  isDevSeed    Boolean  @default(false)
+  state         USState? @relation(fields: [stateId], references: [id])
+
+  @@index([status, publishedAt])
+  @@index([category, status])
+}
+
+// ============================================================
+// Notifications
+// ============================================================
+
+model Notification {
+  id           String   @id @default(cuid())
+  memberId     String?
+  type         String
+  title        String
+  body         String
+  iconUrl      String?
+  priority     String   @default("Normal")
+  actionLabel  String?
+  actionUrl    String?
+  isRead       Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  member       Member? @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@index([memberId, isRead, createdAt])
+}
+
+// ============================================================
+// Announcements / Alerts
+// ============================================================
+
+model Announcement {
+  id          String   @id @default(cuid())
+  title       String
+  body        String
+  priority    String   @default("Normal") // Normal, Important, Urgent, Critical
+  isActive    Boolean  @default(true)
+  startsAt    DateTime @default(now())
+  endsAt      DateTime?
+  createdAt   DateTime @default(now())
+
+  @@index([isActive, startsAt, endsAt])
+}
+
+// ============================================================
+// AI Knowledge Base (RAG)
+// ============================================================
+
+model AIKnowledgeDoc {
+  id          String   @id @default(cuid())
+  title       String
+  sourceType  String   // organization, event, news, service, faq, custom
+  sourceId    String?
+  content     String
+  tags        String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([sourceType, isActive])
+}
+
+// ============================================================
+// Settings (Dynamic Homepage Builder, Site Identity, etc.)
+// ============================================================
+
+model Setting {
+  id    String @id @default(cuid())
+  key   String @unique
+  value String
+}
+
+model HomepageSection {
+  id        String   @id @default(cuid())
+  key       String   @unique // hero, live_now, upcoming_events, map, news, gallery, services, featured_orgs, ai_assistant
+  title     String
+  isEnabled Boolean  @default(true)
+  sortOrder Int      @default(0)
+}
+
+// ============================================================
+// Audit Logs
+// ============================================================
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  actor     String
+  action    String
+  entity    String
+  entityId  String?
+  details   String?
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@index([createdAt])
+}
+
+// ============================================================
+// Reports (user-submitted reports)
+// ============================================================
+
+model Report {
+  id          String   @id @default(cuid())
+  reporter    String
+  targetType   String
+  targetId    String
+  reason      String
+  status      String   @default("Open") // Open, Reviewing, Resolved, Dismissed
+  createdAt   DateTime @default(now())
+
+  @@index([status, createdAt])
+}
+
+// ============================================================
+// Media Library — Albums + Media Items
+// ============================================================
+
+model Album {
+  id          String   @id @default(cuid())
+  name        String
+  nameAr      String?
+  description String?
+  coverUrl    String?
+  isPublic    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  items       MediaItem[]
+
+  @@index([isPublic, sortOrder])
+}
+
+model MediaItem {
+  id          String   @id @default(cuid())
+  albumId     String?
+  name        String
+  type        String   // image, video, pdf, doc
+  url         String
+  thumbnailUrl String?
+  size        Int      @default(0) // bytes
+  mimeType    String?
+  description String?
+  tags        String?  // comma-separated
+  uploadedBy  String   @default("admin")
+  isPublic    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  album       Album?   @relation(fields: [albumId], references: [id])
+
+  @@index([albumId, isPublic])
+  @@index([type, isPublic])
+  @@index([createdAt])
+}
+
+// ============================================================
+// SACA 2.0 Governance / Membership / Elections / Compliance
+// ============================================================
+
+model Membership {
+  id              String   @id @default(cuid())
+  memberId        String
+  status          String   @default("PENDING")
+  membershipType  String   @default("STANDARD")
+  startedAt       DateTime?
+  expiresAt       DateTime?
+  verifiedAt      DateTime?
+  verifiedBy      String?
+  acceptedRulesVersion String?
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  member            Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  payments          MembershipPayment[]
+  statusHistory     MembershipStatusHistory[]
+  @@index([memberId, status])
+  @@index([expiresAt, status])
+}
+
+model MembershipApplication {
+  id              String   @id @default(cuid())
+  memberId        String
+  status          String   @default("PENDING")
+  submittedAt     DateTime @default(now())
+  reviewedAt      DateTime?
+  reviewedBy      String?
+  decisionReason  String?
+  stateCode       String?
+  cityName        String?
+  communityConnection String?
+  rulesAcceptedAt DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  member          Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  @@index([memberId, status])
+  @@index([status, submittedAt])
+}
+
+model MembershipStatusHistory {
+  id          String   @id @default(cuid())
+  membershipId String
+  fromStatus  String?
+  toStatus    String
+  reason      String?
+  changedBy   String?
+  createdAt   DateTime @default(now())
+  membership  Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  @@index([membershipId, createdAt])
+}
+
+model MembershipPayment {
+  id            String   @id @default(cuid())
+  membershipId  String
+  memberId      String?
+  amountCents   Int
+  currency      String   @default("USD")
+  method        String
+  status        String   @default("PENDING")
+  providerRef   String?
+  paidAt         DateTime?
+  createdAt      DateTime @default(now())
+  membership     Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  @@index([membershipId, status])
+}
+
+model Chapter {
+  id          String   @id @default(cuid())
+  nameEn      String
+  nameAr      String
+  stateCode   String
+  cityName    String?
+  status      String   @default("ACTIVE")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  @@unique([nameEn, stateCode])
+  @@index([stateCode, status])
+}
+
+model Board {
+  id          String   @id @default(cuid())
+  title       String
+  status      String   @default("ACTIVE")
+  startDate   DateTime?
+  endDate     DateTime?
+  source      String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model BoardMember {
+  id          String   @id @default(cuid())
+  boardId     String
+  memberId    String
+  positionId  String?
+  status      String   @default("ACTIVE")
+  startDate   DateTime?
+  endDate     DateTime?
+  source      String?
+  createdAt   DateTime @default(now())
+  @@index([boardId, status])
+  @@index([memberId, status])
+}
+
+model Position {
+  id                String   @id @default(cuid())
+  code              String   @unique
+  nameEn            String
+  nameAr            String
+  appointmentMethod String
+  authorityScope    String   @default("NATIONAL")
+  termMonths        Int?
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+}
+
+model Office {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  nameEn      String
+  nameAr      String
+  status      String   @default("ACTIVE")
+  source      String?
+  createdAt   DateTime @default(now())
+}
+
+model OfficeHolder {
+  id          String   @id @default(cuid())
+  officeId    String
+  memberId    String
+  status      String   @default("ACTIVE")
+  startDate   DateTime?
+  endDate     DateTime?
+  appointedBy String?
+  source      String?
+  createdAt   DateTime @default(now())
+  @@index([officeId, status])
+  @@index([memberId, status])
+}
+
+model Committee {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  nameEn      String
+  nameAr      String
+  description String?
+  scope       String   @default("NATIONAL")
+  status      String   @default("ACTIVE")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model CommitteeMember {
+  id          String   @id @default(cuid())
+  committeeId String
+  memberId    String
+  role        String?
+  status      String   @default("ACTIVE")
+  startDate   DateTime?
+  endDate     DateTime?
+  createdAt   DateTime @default(now())
+  @@unique([committeeId, memberId])
+  @@index([memberId, status])
+}
+
+model Appointment {
+  id          String   @id @default(cuid())
+  memberId    String
+  positionId  String?
+  officeId    String?
+  status      String   @default("PROPOSED")
+  nominatedBy String?
+  approvedBy  String?
+  reason      String?
+  startDate   DateTime?
+  endDate     DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model TransitionCommittee {
+  id          String   @id @default(cuid())
+  boardId     String?
+  startDate   DateTime
+  endDate     DateTime?
+  status      String   @default("ACTIVE")
+  limitations String
+  reportStatus String @default("PENDING")
+  createdAt   DateTime @default(now())
+}
+
+model Constitution {
+  id          String   @id @default(cuid())
+  title       String
+  language    String   @default("ar")
+  status      String   @default("ACTIVE")
+  version     String
+  effectiveAt DateTime?
+  sourceHash  String?
+  content     String
+  approvedBy  String?
+  approvedAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  chapters    ConstitutionChapter[]
+  articles    ConstitutionArticle[]
+  amendments  ConstitutionAmendment[]
+  @@index([status, version])
+}
+
+model ConstitutionChapter {
+  id             String   @id @default(cuid())
+  constitutionId String
+  chapterNumber  Int
+  title          String
+  titleEn        String?
+  sortOrder      Int      @default(0)
+  createdAt      DateTime @default(now())
+  constitution   Constitution @relation(fields: [constitutionId], references: [id], onDelete: Cascade)
+  articles       ConstitutionArticle[]
+  @@unique([constitutionId, chapterNumber])
+}
+
+model ConstitutionArticle {
+  id             String   @id @default(cuid())
+  constitutionId String
+  chapterId      String?
+  articleCode    String
+  title          String
+  body           String
+  sortOrder      Int      @default(0)
+  status         String   @default("ACTIVE")
+  createdAt      DateTime @default(now())
+  constitution   Constitution @relation(fields: [constitutionId], references: [id], onDelete: Cascade)
+  chapter        ConstitutionChapter? @relation(fields: [chapterId], references: [id], onDelete: SetNull)
+  clauses        ConstitutionClause[]
+  rules          ConstitutionRule[]
+  @@unique([constitutionId, articleCode])
+  @@index([chapterId, sortOrder])
+}
+
+model ConstitutionClause {
+  id          String   @id @default(cuid())
+  articleId   String
+  clauseCode  String
+  body        String
+  sortOrder   Int      @default(0)
+  status      String   @default("ACTIVE")
+  article     ConstitutionArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  rules       ConstitutionRule[]
+  createdAt   DateTime @default(now())
+  @@unique([articleId, clauseCode])
+  @@index([articleId, sortOrder])
+}
+
+model ConstitutionRule {
+  id             String   @id @default(cuid())
+  code           String   @unique
+  articleId      String
+  clauseId       String?
+  clauseRef      String?
+  name           String
+  description    String
+  conditionExpr  String
+  effect         String
+  scope          String   @default("NATIONAL")
+  severity       String   @default("HIGH")
+  status         String   @default("ACTIVE")
+  testDefinition String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  article        ConstitutionArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  clause         ConstitutionClause? @relation(fields: [clauseId], references: [id], onDelete: SetNull)
+  @@index([articleId, status])
+  @@index([clauseId, status])
+}
+
+model ConstitutionAmendment {
+  id             String   @id @default(cuid())
+  constitutionId String
+  proposalTitle  String
+  proposedBy     String
+  status         String   @default("DRAFT")
+  proposedAt     DateTime @default(now())
+  approvedAt     DateTime?
+  effectiveAt    DateTime?
+  resultRef      String?
+  createdAt      DateTime @default(now())
+  constitution   Constitution @relation(fields: [constitutionId], references: [id], onDelete: Cascade)
+}
+
+model Bylaw {
+  id             String   @id @default(cuid())
+  title          String
+  version        String
+  status         String   @default("DRAFT")
+  content        String
+  constitutionVersion String?
+  effectiveAt    DateTime?
+  approvedBy     String?
+  approvedAt     DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model Policy {
+  id             String   @id @default(cuid())
+  code           String   @unique
+  title          String
+  version        String
+  category       String
+  content        String
+  sourceArticles String?
+  status         String   @default("DRAFT")
+  effectiveAt    DateTime?
+  approvedBy     String?
+  approvedAt     DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model GovernanceDecision {
+  id            String   @id @default(cuid())
+  meetingId     String?
+  motionId      String?
+  title         String
+  summary       String
+  status        String   @default("PENDING")
+  authority    String
+  quorumStatus  String?
+  voteResult    String?
+  sourceArticle String?
+  approvedAt    DateTime?
+  approvedBy    String?
+  createdAt     DateTime @default(now())
+}
+
+model Resolution {
+  id            String   @id @default(cuid())
+  decisionId    String
+  resolutionNo  String   @unique
+  text          String
+  status        String   @default("DRAFT")
+  effectiveAt   DateTime?
+  certifiedAt   DateTime?
+  certifiedBy   String?
+  createdAt     DateTime @default(now())
+}
+
+model GeneralAssembly {
+  id          String   @id @default(cuid())
+  title       String
+  meetingType String
+  scheduledAt DateTime
+  status      String   @default("SCHEDULED")
+  quorumRuleId String?
+  createdAt   DateTime @default(now())
+}
+
+model QuorumRule {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  name        String
+  threshold   String
+  denominator String
+  sourceRule  String?
+  status      String   @default("ACTIVE")
+  createdAt   DateTime @default(now())
+}
+
+model MeetingAgendaItem {
+  id          String   @id @default(cuid())
+  meetingId   String
+  title       String
+  description String?
+  sortOrder   Int      @default(0)
+  requiresVote Boolean @default(false)
+  status      String   @default("OPEN")
+  createdAt   DateTime @default(now())
+  @@index([meetingId, sortOrder])
+}
+
+model MeetingMinute {
+  id          String   @id @default(cuid())
+  meetingId   String
+  status      String   @default("DRAFT")
+  content     String
+  approvedAt  DateTime?
+  approvedBy  String?
+  sourceHash  String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Election {
+  id            String   @id @default(cuid())
+  name          String
+  description   String?
+  status        String   @default("DRAFT")
+  nominationOpenAt DateTime?
+  nominationCloseAt DateTime?
+  votingOpenAt  DateTime?
+  votingCloseAt DateTime?
+  constitutionVersion String?
+  ballotVersion String?
+  configurationHash String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  @@index([status, votingOpenAt])
+}
+
+model ElectionCommittee {
+  id          String   @id @default(cuid())
+  electionId  String
+  memberId    String
+  status      String   @default("ACTIVE")
+  isCandidate Boolean  @default(false)
+  appointedAt DateTime @default(now())
+  @@unique([electionId, memberId])
+}
+
+model Candidate {
+  id          String   @id @default(cuid())
+  electionId  String
+  memberId    String
+  positionId  String?
+  status      String   @default("PENDING")
+  statement   String?
+  verifiedAt  DateTime?
+  verifiedBy  String?
+  createdAt   DateTime @default(now())
+  @@unique([electionId, memberId, positionId])
+  @@index([electionId, status])
+}
+
+model VoterEligibility {
+  id            String   @id @default(cuid())
+  electionId    String
+  memberId      String
+  eligible      Boolean
+  reason        String?
+  membershipAgeDays Int?
+  credentialHash String? @unique
+  credentialIssuedAt DateTime?
+  credentialUsedAt DateTime?
+  evaluatedAt   DateTime @default(now())
+  evaluatedBy   String?
+  @@unique([electionId, memberId])
+  @@index([electionId, eligible])
+}
+
+model BallotDefinition {
+  id            String   @id @default(cuid())
+  electionId    String
+  version       String
+  definition    String
+  definitionHash String
+  status        String   @default("DRAFT")
+  frozenAt      DateTime?
+  createdAt     DateTime @default(now())
+  @@unique([electionId, version])
+}
+
+model EncryptedBallot {
+  id            String   @id @default(cuid())
+  electionId    String
+  ballotRef     String   @unique
+  encryptedPayload String
+  commitment    String
+  castAt        DateTime @default(now())
+  status        String   @default("CAST")
+  @@index([electionId, castAt])
+}
+
+model VoteReceipt {
+  id            String   @id @default(cuid())
+  electionId    String
+  receiptCode   String   @unique
+  ballotCommitment String
+  issuedAt      DateTime @default(now())
+}
+
+model ElectionTally {
+  id            String   @id @default(cuid())
+  electionId    String
+  status        String   @default("PENDING")
+  tallyVersion  String
+  resultPayload String
+  resultHash    String
+  startedAt     DateTime?
+  completedAt   DateTime?
+  executedBy    String?
+  createdAt     DateTime @default(now())
+}
+
+model ElectionResult {
+  id            String   @id @default(cuid())
+  electionId    String
+  positionId    String?
+  candidateId   String?
+  voteCount     Int      @default(0)
+  percentage    Float?
+  status        String   @default("DRAFT")
+  certifiedAt   DateTime?
+  certifiedBy   String?
+  createdAt     DateTime @default(now())
+}
+
+model ElectionAppeal {
+  id          String   @id @default(cuid())
+  electionId  String
+  appellantId String
+  reason      String
+  evidence    String?
+  status      String   @default("SUBMITTED")
+  decision    String?
+  decidedBy   String?
+  decidedAt   DateTime?
+  createdAt   DateTime @default(now())
+}
+
+model ElectionControlApproval {
+  id          String   @id @default(cuid())
+  electionId  String
+  action      String
+  approverUserId String
+  approvedAt  DateTime @default(now())
+  note        String?
+  @@unique([electionId, action, approverUserId])
+  @@index([electionId, action, approvedAt])
+}
+
+model ElectionAudit {
+  id          String   @id @default(cuid())
+  electionId  String
+  category    String
+  event       String
+  details     String?
+  actor       String?
+  createdAt   DateTime @default(now())
+  @@index([electionId, createdAt])
+}
+
+model MeetingParticipant {
+  id          String   @id @default(cuid())
+  meetingId   String
+  identity    String
+  memberId    String?
+  displayName String?
+  status      String   @default("CONNECTED")
+  joinedAt    DateTime @default(now())
+  leftAt      DateTime?
+  lastSeenAt  DateTime?
+  meeting     Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  @@unique([meetingId, identity])
+  @@index([meetingId, status])
+  @@index([memberId, status])
+}
+
+model ServiceRequest {
+  id          String   @id @default(cuid())
+  memberId    String
+  serviceCode String
+  stateCode   String?
+  chapterId   String?
+  language    String?
+  urgency     String   @default("NORMAL")
+  status      String   @default("SUBMITTED")
+  description String
+  assignedTo  String?
+  resolvedAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  @@index([memberId, status])
+  @@index([status, createdAt])
+}
+
+model VolunteerProfile {
+  id            String   @id @default(cuid())
+  memberId      String   @unique
+  skills        String?
+  availability  String?
+  interests     String?
+  status        String   @default("ACTIVE")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  member        Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+}
+
+model LegalDocument {
+  id                 String   @id @default(cuid())
+  title              String
+  titleAr            String?
+  documentType       String
+  organizationName   String?
+  jurisdiction       String?
+  issuingAuthority   String?
+  filingDate         DateTime?
+  acknowledgmentNo   String?
+  authenticationNo   String?
+  verificationUrl    String?
+  fileUrl            String
+  originalFileHash   String?
+  status             String   @default("DRAFT")
+  visibility         String   @default("PUBLIC")
+  version            String   @default("1.0")
+  publishedAt        DateTime?
+  approvedAt         DateTime?
+  approvedBy         String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  @@index([documentType, status])
+}
+
+model ComplianceRule {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  sourceType  String
+  sourceRef   String
+  title       String
+  description String
+  severity    String   @default("HIGH")
+  status      String   @default("ACTIVE")
+  createdAt   DateTime @default(now())
+}
+
+model ComplianceCheck {
+  id          String   @id @default(cuid())
+  ruleId      String
+  resource    String
+  resourceId  String?
+  result      String
+  evidence    String?
+  checkedAt   DateTime @default(now())
+  checkedBy   String?
+  @@index([ruleId, result])
+}
+
+model ComplianceAlert {
+  id          String   @id @default(cuid())
+  ruleId      String
+  title       String
+  severity    String
+  status      String   @default("OPEN")
+  details     String
+  assignedTo  String?
+  createdAt   DateTime @default(now())
+  resolvedAt  DateTime?
+}
+
+model ModerationCase {
+  id          String   @id @default(cuid())
+  targetType  String
+  targetId    String
+  reporterId  String?
+  category    String
+  status      String   @default("PENDING")
+  severity    String   @default("MEDIUM")
+  reason      String
+  ruleCode    String?
+  assignedTo  String?
+  createdAt   DateTime @default(now())
+  resolvedAt  DateTime?
+  @@index([status, severity, createdAt])
+}
+
+model ModerationDecision {
+  id          String   @id @default(cuid())
+  caseId      String
+  decision    String
+  rationale   String
+  decidedBy   String
+  createdAt   DateTime @default(now())
+}
+
+model ModerationAppeal {
+  id          String   @id @default(cuid())
+  caseId      String
+  appellantId String
+  reason      String
+  status      String   @default("SUBMITTED")
+  decidedBy   String?
+  decision    String?
+  createdAt   DateTime @default(now())
+}
+
+model RiskRegister {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  title       String
+  category    String
+  severity    String
+  likelihood  Int      @default(1)
+  impact      Int      @default(1)
+  score       Int      @default(1)
+  owner       String?
+  treatment   String?
+  status      String   @default("OPEN")
+  reviewDate  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model ChangeRequest {
+  id             String   @id @default(cuid())
+  title          String
+  category       String
+  impact         String
+  status         String   @default("DRAFT")
+  requestedBy    String
+  approvedBy     String?
+  scheduledAt    DateTime?
+  appliedAt      DateTime?
+  verificationAt DateTime?
+  rollbackPlan   String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model SecurityIncident {
+  id          String   @id @default(cuid())
+  title       String
+  severity    String
+  status      String   @default("DETECTED")
+  owner       String?
+  details     String
+  detectedAt  DateTime @default(now())
+  resolvedAt  DateTime?
+  createdAt   DateTime @default(now())
+}
+
+model PrivacyRequest {
+  id          String   @id @default(cuid())
+  memberId    String
+  type        String
+  status      String   @default("SUBMITTED")
+  details     String?
+  requestedAt DateTime @default(now())
+  completedAt DateTime?
+  handledBy   String?
+  member       Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+}
+
+model PushSubscription {
+  id          String   @id @default(cuid())
+  memberId    String
+  endpoint    String   @unique
+  p256dh      String
+  auth        String
+  deviceLabel String?
+  createdAt   DateTime @default(now())
+  revokedAt   DateTime?
+  member      Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  @@index([memberId, revokedAt])
+}
+
+model EventRegistration {
+  id          String   @id @default(cuid())
+  eventId     String
+  memberId    String
+  event       Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  member      Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  status      String   @default("REGISTERED")
+  registeredAt DateTime @default(now())
+  attendedAt  DateTime?
+  cancelledAt  DateTime?
+  @@unique([eventId, memberId])
+  @@index([eventId, status])
+}
+
+
+// ============================================================
+// SACA 3.0 Identity / Authorization / Security / Operations
+// ============================================================
+
+model User {
+  id           String   @id @default(cuid())
+  email        String?  @unique
+  phoneE164    String?  @unique
+  displayName  String
+  status       String   @default("ACTIVE")
+  memberId     String?  @unique
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  accounts     Account[]
+  sessions     Session[]
+  mfaFactors   MFAFactor[]
+  recoveryCodes RecoveryCode[]
+  userRoles    UserRole[]
+  adminSessions AdminSession[]
+  member       Member? @relation(fields: [memberId], references: [id], onDelete: SetNull)
+  @@index([status])
+}
+
+model Account {
+  id                String   @id @default(cuid())
+  userId            String
+  provider          String
+  providerAccountId String
+  createdAt         DateTime @default(now())
+  user            User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model AdminSession {
+  id             String   @id @default(cuid())
+  sessionId      String   @unique
+  username       String
+  role           String
+  userId         String?
+  scopeType      String   @default("NATIONAL")
+  scopeId        String?
+  expiresAt      DateTime
+  revokedAt      DateTime?
+  mfaVerifiedAt  DateTime?
+  createdAt      DateTime @default(now())
+  lastSeenAt     DateTime?
+  ipHash         String?
+  userAgentHash  String?
+  user           User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  @@index([username, revokedAt])
+  @@index([expiresAt])
+  @@index([userId, revokedAt])
+  @@index([scopeType, scopeId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  userId       String
+  sessionHash  String   @unique
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  createdAt    DateTime @default(now())
+  lastSeenAt   DateTime?
+  ipHash       String?
+  userAgentHash String?
+  user         User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, revokedAt])
+  @@index([expiresAt])
+}
+
+model MFAFactor {
+  id          String   @id @default(cuid())
+  userId      String
+  type        String
+  label       String?
+  secretRef   String?
+  verifiedAt  DateTime?
+  revokedAt   DateTime?
+  createdAt   DateTime @default(now())
+  user         User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, revokedAt])
+}
+
+model RecoveryCode {
+  id         String   @id @default(cuid())
+  userId     String
+  codeHash   String
+  usedAt     DateTime?
+  createdAt  DateTime @default(now())
+  user         User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, usedAt])
+}
+
+model Role {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  nameEn      String
+  nameAr      String
+  status      String   @default("ACTIVE")
+  createdAt   DateTime @default(now())
+  userRoles   UserRole[]
+  permissions RolePermission[]
+}
+
+model Permission {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+  roles       RolePermission[]
+}
+
+model RolePermission {
+  id           String   @id @default(cuid())
+  roleId       String
+  permissionId String
+  role         Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  @@unique([roleId, permissionId])
+}
+
+model UserRole {
+  id        String   @id @default(cuid())
+  userId    String
+  roleId    String
+  scopeType String   @default("NATIONAL")
+  scopeId   String?
+  startsAt  DateTime @default(now())
+  endsAt    DateTime?
+  status    String   @default("ACTIVE")
+  user       User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role       Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  @@index([userId, status])
+  @@index([roleId, scopeType, scopeId])
+}
+
+model GovernanceTrace {
+  id                 String   @id @default(cuid())
+  articleRef         String?
+  ruleCode           String?
+  policyCode         String?
+  permissionCode     String?
+  workflowCode       String?
+  apiRoute           String?
+  databaseEntity     String?
+  testId             String?
+  evidenceRef        String?
+  status             String   @default("PENDING")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  @@index([ruleCode, status])
+}
+
+model Control {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  category    String
+  title       String
+  description String
+  status      String   @default("ACTIVE")
+  owner       String?
+  createdAt   DateTime @default(now())
+}
+
+model ControlTest {
+  id          String   @id @default(cuid())
+  controlId   String
+  result      String
+  evidence    String?
+  executedAt  DateTime @default(now())
+  executedBy  String?
+  @@index([controlId, result])
+}
+
+model PolicyAcknowledgement {
+  id           String   @id @default(cuid())
+  userId       String
+  policyCode   String
+  version      String
+  acceptedAt   DateTime @default(now())
+  @@index([userId, policyCode])
+}
+
+model Complaint {
+  id          String   @id @default(cuid())
+  reporterId  String?
+  category    String
+  subject     String
+  details     String
+  status      String   @default("OPEN")
+  severity    String   @default("MEDIUM")
+  assignedTo  String?
+  createdAt   DateTime @default(now())
+  resolvedAt  DateTime?
+  @@index([status, severity, createdAt])
+}
+
+model Suggestion {
+  id          String   @id @default(cuid())
+  memberId    String?
+  subject     String
+  details     String
+  status      String   @default("SUBMITTED")
+  createdAt   DateTime @default(now())
+  reviewedAt  DateTime?
+}
+
+model ServiceProvider {
+  id          String   @id @default(cuid())
+  name        String
+  category    String
+  organizationId String?
+  verificationStatus String @default("PENDING")
+  stateCode   String?
+  cityName    String?
+  languages   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  @@index([category, verificationStatus])
+}
+
+model ServiceAssignment {
+  id           String   @id @default(cuid())
+  serviceRequestId String
+  providerId   String
+  status       String   @default("ASSIGNED")
+  assignedAt   DateTime @default(now())
+  completedAt  DateTime?
+  notes        String?
+}
+
+model Referral {
+  id              String   @id @default(cuid())
+  serviceRequestId String
+  providerId      String
+  reason          String?
+  status          String   @default("REFERRED")
+  createdAt       DateTime @default(now())
+}
+
+model ServiceResolution {
+  id               String   @id @default(cuid())
+  serviceRequestId String   @unique
+  resolution       String
+  outcome          String?
+  resolvedBy       String
+  resolvedAt       DateTime @default(now())
+}
+
+model Job {
+  id          String   @id @default(cuid())
+  title       String
+  employer    String
+  description String
+  location    String?
+  stateCode   String?
+  remote      Boolean  @default(false)
+  applicationUrl String?
+  status      String   @default("PUBLISHED")
+  expiresAt   DateTime?
+  createdAt   DateTime @default(now())
+  @@index([status, expiresAt])
+}
+
+model Business {
+  id           String   @id @default(cuid())
+  name         String
+  category     String
+  description  String?
+  ownerMemberId String?
+  stateCode    String?
+  cityName     String?
+  website      String?
+  phone        String?
+  verificationStatus String @default("PENDING")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  @@index([category, verificationStatus])
+}
+
+model BusinessClaim {
+  id          String   @id @default(cuid())
+  businessId  String
+  memberId    String
+  status      String   @default("PENDING")
+  createdAt   DateTime @default(now())
+  reviewedAt  DateTime?
+}
+
+model BusinessVerification {
+  id          String   @id @default(cuid())
+  businessId  String
+  status      String
+  verifiedBy  String?
+  verifiedAt  DateTime?
+  expiresAt   DateTime?
+  evidenceRef String?
+}
+
+model Volunteer {
+  id          String   @id @default(cuid())
+  memberId    String   @unique
+  status      String   @default("ACTIVE")
+  skills      String?
+  availability String?
+  createdAt   DateTime @default(now())
+  member      Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  applications VolunteerApplication[]
+  assignments  VolunteerAssignment[]
+  hours        VolunteerHours[]
+}
+
+model VolunteerApplication {
+  id          String   @id @default(cuid())
+  volunteerId String
+  volunteer   Volunteer @relation(fields: [volunteerId], references: [id], onDelete: Cascade)
+  program     String
+  status      String   @default("PENDING")
+  createdAt   DateTime @default(now())
+}
+
+model VolunteerAssignment {
+  id          String   @id @default(cuid())
+  volunteerId String
+  volunteer   Volunteer @relation(fields: [volunteerId], references: [id], onDelete: Cascade)
+  activity    String
+  startAt     DateTime?
+  endAt       DateTime?
+  status      String   @default("ASSIGNED")
+}
+
+model VolunteerHours {
+  id          String   @id @default(cuid())
+  volunteerId String
+  volunteer   Volunteer @relation(fields: [volunteerId], references: [id], onDelete: Cascade)
+  hours       Float
+  loggedAt    DateTime @default(now())
+  verifiedBy  String?
+}
+
+model NotificationPreference {
+  id          String   @id @default(cuid())
+  memberId    String
+  channel     String
+  category    String
+  enabled     Boolean  @default(true)
+  quietFrom   String?
+  quietTo     String?
+  @@unique([memberId, channel, category])
+}
+
+model ConsentRecord {
+  id          String   @id @default(cuid())
+  memberId    String
+  consentType String
+  version     String
+  granted     Boolean
+  recordedAt  DateTime @default(now())
+  revokedAt   DateTime?
+  member      Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+}
+
+model ModerationRule {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  category    String
+  action      String
+  severity    String
+  sourceRef   String?
+  status      String   @default("ACTIVE")
+}
+
+model SecurityEvent {
+  id          String   @id @default(cuid())
+  category    String
+  severity    String
+  actorId     String?
+  resource    String?
+  resourceId  String?
+  details     String?
+  ipHash      String?
+  createdAt   DateTime @default(now())
+  @@index([category, severity, createdAt])
+}
+
+model DataExportRequest {
+  id          String   @id @default(cuid())
+  memberId    String
+  status      String   @default("REQUESTED")
+  format      String   @default("JSON")
+  requestedAt DateTime @default(now())
+  completedAt DateTime?
+  fileUrl     String?
+  member       Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+}
+
+model DataCorrectionRequest {
+  id          String   @id @default(cuid())
+  memberId    String
+  details     String
+  status      String   @default("REQUESTED")
+  requestedAt DateTime @default(now())
+  completedAt DateTime?
+  member       Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+}
+
+model AccountDeletionRequest {
+  id          String   @id @default(cuid())
+  memberId    String
+  status      String   @default("REQUESTED")
+  requestedAt DateTime @default(now())
+  approvedAt  DateTime?
+  completedAt DateTime?
+  member       Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+}
+
+model JobRun {
+  id          String   @id @default(cuid())
+  jobName     String
+  status      String
+  startedAt   DateTime @default(now())
+  finishedAt  DateTime?
+  details     String?
+}
+
+model DataQualityFinding {
+  id          String   @id @default(cuid())
+  category    String
+  severity    String
+  entity      String
+  entityId    String?
+  details     String
+  status      String   @default("OPEN")
+  createdAt   DateTime @default(now())
+  resolvedAt  DateTime?
+}
+
+model MemberSession {
+  id           String   @id @default(cuid())
+  memberId     String
+  tokenHash    String   @unique
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  createdAt    DateTime @default(now())
+  lastSeenAt   DateTime?
+  ipHash       String?
+  userAgentHash String?
+  member       Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  @@index([memberId, revokedAt])
+  @@index([expiresAt])
+}
+
+model Follow {
+  id         String   @id @default(cuid())
+  memberId   String
+  targetType String
+  targetId   String
+  createdAt  DateTime @default(now())
+  member     Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  @@unique([memberId, targetType, targetId])
+  @@index([memberId, targetType])
+}
+
+
+// ============================================================
+// Production workflow extensions
+// ============================================================
+
+model BoardTerm {
+  id        String   @id @default(cuid())
+  boardId   String
+  termCode  String
+  startDate DateTime
+  endDate   DateTime
+  status    String   @default("ACTIVE")
+  sourceRef String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([boardId, termCode])
+  @@index([status, startDate, endDate])
+}
+
+model ScopeDefinition {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  nameAr      String
+  nameEn      String
+  scopeType   String
+  resourceRef String?
+  status      String   @default("ACTIVE")
+  createdAt   DateTime @default(now())
+}
+
+model GeneralAssemblyAttendance {
+  id          String   @id @default(cuid())
+  assemblyId  String
+  memberId    String
+  attendedAt  DateTime @default(now())
+  leftAt      DateTime?
+  attendanceType String @default("IN_PERSON")
+  valid       Boolean  @default(true)
+  @@unique([assemblyId, memberId])
+  @@index([assemblyId, valid])
+}
+
+model Motion {
+  id          String   @id @default(cuid())
+  meetingId   String
+  agendaItemId String?
+  title       String
+  text        String
+  status      String   @default("PROPOSED")
+  proposedBy  String?
+  createdAt   DateTime @default(now())
+}
+
+model MotionVote {
+  id          String   @id @default(cuid())
+  motionId    String
+  memberId    String
+  choice      String
+  castAt      DateTime @default(now())
+  @@unique([motionId, memberId])
+  @@index([motionId, choice])
+}
+
+model ElectionPosition {
+  id          String   @id @default(cuid())
+  electionId  String
+  positionId  String?
+  code        String
+  nameAr      String
+  nameEn      String
+  seatCount   Int      @default(1)
+  status      String   @default("ACTIVE")
+  @@unique([electionId, code])
+  @@index([electionId, status])
+}
+
+model ElectionCertification {
+  id          String   @id @default(cuid())
+  electionId  String
+  status      String   @default("DRAFT")
+  resultHash  String?
+  certifiedBy String?
+  certifiedAt DateTime?
+  notes       String?
+  createdAt   DateTime @default(now())
+  @@index([electionId, status])
+}
+
+model MeetingRecording {
+  id          String   @id @default(cuid())
+  meetingId   String
+  storageKey  String
+  status      String   @default("PROCESSING")
+  consentVersion String?
+  retentionUntil DateTime?
+  publishedAt DateTime?
+  createdAt   DateTime @default(now())
+  @@index([meetingId, status])
+}
+
+model Service {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  nameAr      String
+  nameEn      String
+  descriptionAr String?
+  descriptionEn String?
+  category    String
+  status      String   @default("ACTIVE")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  @@index([category, status])
+}
+
+model VerificationChallenge {
+  id             String   @id @default(cuid())
+  channel        String
+  deliveryProvider String @default("LOCAL")
+  destinationHash String
+  codeHash       String
+  purpose        String
+  expiresAt      DateTime
+  attempts       Int      @default(0)
+  maxAttempts    Int      @default(5)
+  consumedAt     DateTime?
+  createdAt      DateTime @default(now())
+  ipHash         String?
+  @@index([destinationHash, purpose, expiresAt])
+}
+
+model AIEmbedding {
+  id          String   @id @default(cuid())
+  documentId  String
+  chunkIndex  Int
+  vectorRef   String
+  contentHash String
+  createdAt   DateTime @default(now())
+  @@unique([documentId, chunkIndex])
+}
+
+
+model AdminMfaFactor {
+  id             String   @id @default(cuid())
+  username       String   @unique
+  secretCipher   String
+  algorithm      String   @default("SHA1")
+  digits         Int      @default(6)
+  periodSeconds  Int      @default(30)
+  enabled        Boolean  @default(true)
+  verifiedAt     DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  failedAttempts Int      @default(0)
+  lockedUntil    DateTime?
+}
