@@ -1,41 +1,15 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { verifyAdminSession } from "@/lib/security/admin-verify";
 
-const COOKIE_NAME = "saca_admin_session";
-
-function unb64url(value: string): Uint8Array {
-  const padded = value.replaceAll("-", "+").replaceAll("_", "/") + "===".slice((value.length + 3) % 4);
-  const binary = atob(padded);
-  return Uint8Array.from(binary, (c) => c.charCodeAt(0));
-}
-
-async function key(): Promise<CryptoKey> {
-  const secret = process.env.ADMIN_SESSION_SECRET;
-  if (!secret || secret.length < 32) throw new Error("ADMIN_SESSION_SECRET must be at least 32 characters.");
-  return crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign", "verify"]);
-}
-
-async function verifyCookie(value: string | undefined): Promise<{ mfaRequired: boolean; mfaVerified: boolean; expired: boolean } | null> {
-  if (!value) return null;
-  const [payload, signature] = value.split(".");
-  if (!payload || !signature) return null;
-  try {
-    const sigBytes = unb64url(signature);
-    const buf = new Uint8Array(sigBytes.buffer.slice(sigBytes.byteOffset, sigBytes.byteOffset + sigBytes.byteLength));
-    const ok = await crypto.subtle.verify("HMAC", await key(), buf as unknown as ArrayBuffer, new TextEncoder().encode(payload));
-    if (!ok) return null;
-    const json = JSON.parse(new TextDecoder().decode(unb64url(payload)));
-    const now = Math.floor(Date.now() / 1000);
-    if (json.ver !== 3 || !json.sid || !json.sub || json.exp <= now) return { mfaRequired: true, mfaVerified: false, expired: true };
-    return { mfaRequired: Boolean(json.mfaRequired), mfaVerified: Boolean(json.mfaVerified), expired: false };
-  } catch {
-    return null;
-  }
-}
+// Middleware is a coarse pre-gate. It delegates the authoritative
+// session/MFA/role/scope check to lib/security/admin-verify.ts so
+// the cookie, the DB, and every server route handler share the SAME
+// source of truth. No parallel cookie-only verifier exists here.
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isAdminPage = pathname === "/admin" || pathname.startsWith("/admin/");
-  const isAdminApi = pathname.startsWith("/api/admin/") || pathname === "/api/admin";
+  const isAdminApi = pathname.startsWith("/api/admin/");
   const isMfaApi = pathname.startsWith("/api/admin/mfa/");
   const isMfaPage = pathname === "/secure-portal/mfa";
 
@@ -45,10 +19,10 @@ export async function middleware(request: NextRequest) {
     return response;
   }
 
-  const token = request.cookies.get(COOKIE_NAME)?.value;
-  const session = await verifyCookie(token);
+  const token = request.cookies.get("saca_admin_session")?.value;
+  const result = await verifyAdminSession(token);
 
-  if (!session) {
+  if (!result.ok) {
     if (isAdminApi && !isMfaApi) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const url = request.nextUrl.clone();
     url.pathname = "/secure-portal";
@@ -56,7 +30,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  if (session.expired) {
+  if (result.session.exp <= Math.floor(Date.now() / 1000)) {
     if (isAdminApi && !isMfaApi) return NextResponse.json({ error: "Session expired" }, { status: 401 });
     const url = request.nextUrl.clone();
     url.pathname = "/secure-portal";
@@ -64,8 +38,10 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  if (session.mfaRequired && !session.mfaVerified) {
-    if (isAdminApi && !isMfaApi) return NextResponse.json({ error: "MFA_REQUIRED" }, { status: 401, headers: { "x-saca-mfa-required": "1" } });
+  if (result.session.mfaRequired && !result.session.mfaVerified) {
+    if (isAdminApi && !isMfaApi) {
+      return NextResponse.json({ error: "MFA_REQUIRED" }, { status: 401, headers: { "x-saca-mfa-required": "1" } });
+    }
     if (isAdminPage) {
       const url = request.nextUrl.clone();
       url.pathname = "/secure-portal/mfa";
@@ -93,6 +69,11 @@ function applySecurityHeaders(response: NextResponse) {
   response.headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");
 }
 
+// Middleware runs in the Node.js runtime so it can use the Prisma
+// client via lib/security/admin-verify.ts. Explicit declaration
+// avoids any future Edge-runtime misconfiguration that would
+// silently re-introduce a parallel cookie-only verifier.
 export const config = {
   matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  runtime: "nodejs",
 };
